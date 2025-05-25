@@ -1,0 +1,6 @@
+# Ignore heavy files and venv
+tornado_data/*.csv
+*.db
+venv/
+__pycache__/
+*.pkl
