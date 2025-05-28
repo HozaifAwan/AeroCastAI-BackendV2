@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+requests
+pydantic
+mailjet_rest
+numpy
+sqlite3  
