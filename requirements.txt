@@ -1,7 +1,9 @@
 fastapi
 uvicorn
-requests
-numpy
 pydantic
-mailjet-rest
+requests
+mailjet_rest
+numpy
+joblib
+scikit-learn
 xgboost
