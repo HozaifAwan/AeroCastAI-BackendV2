@@ -33,9 +33,12 @@ def download_model():
     if not os.path.exists(model_path):
         print("Model file not found. Downloading...")
         response = requests.get(model_url)
+        content_type = response.headers.get("Content-Type", "")
+        if "text/html" in content_type:
+            raise RuntimeError("❌ Downloaded content is not a .pkl file — probably an HTML page.")
         with open(model_path, "wb") as f:
             f.write(response.content)
-        print("Model downloaded successfully.")
+        print("✅ Model downloaded successfully.")
 
 download_model()
 
