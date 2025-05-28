@@ -200,3 +200,8 @@ async def subscribe(req: SubscribeRequest):
     # Send confirmation email to the user
     send_email(req.email)
     return {"message": "Subscribed!"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+
