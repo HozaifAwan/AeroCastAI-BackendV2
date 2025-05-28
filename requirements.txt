@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 requests
-pydantic
-mailjet_rest==1.4.0
 numpy
+pydantic
+mailjet-rest
+xgboost
