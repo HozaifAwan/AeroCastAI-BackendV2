@@ -5,6 +5,7 @@ import sqlite3
 import pickle
 import numpy as np
 import requests
+import os
 from fastapi.middleware.cors import CORSMiddleware
 from mailjet_rest import Client
 
@@ -18,14 +19,28 @@ mailjet = Client(auth=(api_key, api_secret), version='v3.1')
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or specify ["http://localhost:5173"] for more security
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# === Ensure model file exists ===
+model_path = "aerocast_model_ultra.pkl"
+model_url = "https://drive.google.com/uc?export=download&id=1ZrESyGIr0sTd531Hp9ZxB7l4mkU5-jG9"
+
+def download_model():
+    if not os.path.exists(model_path):
+        print("Model file not found. Downloading...")
+        response = requests.get(model_url)
+        with open(model_path, "wb") as f:
+            f.write(response.content)
+        print("Model downloaded successfully.")
+
+download_model()
+
 # === Load model ===
-with open("aerocast_model_ultra.pkl", "rb") as f:
+with open(model_path, "rb") as f:
     model = pickle.load(f)
 
 # === Input schema ===
@@ -50,14 +65,11 @@ def predict(location: Location):
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={location.latitude}&longitude={location.longitude}&current=temperature_2m,dew_point_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,cloud_cover,precipitation,apparent_temperature"
         response = requests.get(url)
-        print("Weather API status:", response.status_code)
-        print("Weather API response:", response.text)
         weather_data = response.json()["current"]
     except Exception as e:
         print("Weather fetch failed:", e)
         raise HTTPException(status_code=500, detail=f"Weather fetch failed: {e}")
 
-    # 2. Prepare features
     try:
         features = [
             weather_data["temperature_2m"],
@@ -76,22 +88,19 @@ def predict(location: Location):
     except KeyError as e:
         raise HTTPException(status_code=500, detail=f"Missing weather field: {e}")
 
-    # 3. Predict
     try:
         prediction = int(model.predict([features])[0])
         confidence = float(np.max(model.predict_proba([features])) * 100)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
 
-    # 4. Reverse geocode to get city/state/country BEFORE logging to DB
     try:
         geocode_url = (
             f"https://nominatim.openstreetmap.org/reverse"
             f"?lat={location.latitude}&lon={location.longitude}&format=json"
         )
         geocode_resp = requests.get(geocode_url, headers={"User-Agent": "AeroCastAI/1.0"})
-        geocode_json = geocode_resp.json()
-        address = geocode_json.get("address", {})
+        address = geocode_resp.json().get("address", {})
         city = address.get("city") or address.get("town") or address.get("village") or address.get("hamlet") or ""
         state = address.get("state") or ""
         country = address.get("country") or ""
@@ -100,7 +109,6 @@ def predict(location: Location):
         print("Reverse geocoding failed:", e)
         location_name = ""
 
-    # 5. Log to DB (now location_name is defined)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         conn = sqlite3.connect("aerocastai_weather.db")
@@ -126,7 +134,6 @@ def predict(location: Location):
         print("DB insert error:", e)
         raise HTTPException(status_code=500, detail=f"DB insert error: {e}")
 
-    # 6. Return result to frontend
     return {
         "timestamp": timestamp,
         "latitude": location.latitude,
@@ -145,7 +152,6 @@ def predict(location: Location):
     }
 
 def geocode_zip(zipcode):
-    # Use a real geocoding API in production
     resp = requests.get(f"https://api.zippopotam.us/us/{zipcode}")
     if resp.status_code == 200:
         data = resp.json()
@@ -154,7 +160,6 @@ def geocode_zip(zipcode):
         return lat, lon
     return None, None
 
-# Update send_email to log more info
 def send_email(to_email):
     print(f"Preparing to send email to: {to_email}")
     data = {
@@ -179,7 +184,6 @@ def send_email(to_email):
     print("Mailjet status:", result.status_code)
     print("Mailjet response:", result.json())
 
-# Add a test endpoint to trigger email sending directly
 @app.post("/test-email")
 async def test_email_endpoint(req: EmailRequest):
     print(f"Testing email send to: {req.email}")
@@ -188,7 +192,6 @@ async def test_email_endpoint(req: EmailRequest):
 
 @app.post("/subscribe")
 async def subscribe(req: SubscribeRequest):
-    # Save to database (optional)
     conn = sqlite3.connect("aerocastai_weather.db")
     cursor = conn.cursor()
     cursor.execute(
@@ -197,7 +200,6 @@ async def subscribe(req: SubscribeRequest):
     )
     conn.commit()
     conn.close()
-    # Send confirmation email to the user
     send_email(req.email)
     return {"message": "Subscribed!"}
 
